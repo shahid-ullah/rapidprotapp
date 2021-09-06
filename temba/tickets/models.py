@@ -5,7 +5,9 @@ from smartmin.models import SmartModel
 from django.conf import settings
 from django.conf.urls import url
 from django.contrib.auth.models import User
-from django.contrib.postgres.fields import JSONField
+
+# from django.contrib.postgres.fields import JSONField
+from django.db.models import JSONField
 from django.db import models
 from django.db.models import Q, Sum
 from django.template import Engine
@@ -61,7 +63,9 @@ class TicketerType(metaclass=ABCMeta):
         """
         Gets the URL/view configuration for this ticketer's connect page
         """
-        return url(r"^connect", self.connect_view.as_view(ticketer_type=self), name="connect")
+        return url(
+            r"^connect", self.connect_view.as_view(ticketer_type=self), name="connect"
+        )
 
 
 class Ticketer(SmartModel, DependencyMixin):
@@ -104,9 +108,13 @@ class Ticketer(SmartModel, DependencyMixin):
 
         from .types.internal import InternalType
 
-        assert not org.ticketers.filter(ticketer_type=InternalType.slug).exists(), "org already has internal tickteter"
+        assert not org.ticketers.filter(
+            ticketer_type=InternalType.slug
+        ).exists(), "org already has internal tickteter"
 
-        return cls.create(org, org.created_by, InternalType.slug, f"{brand['name']} Tickets", {})
+        return cls.create(
+            org, org.created_by, InternalType.slug, f"{brand['name']} Tickets", {}
+        )
 
     @classmethod
     def get_types(cls):
@@ -164,10 +172,14 @@ class Ticket(models.Model):
     org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="tickets")
 
     # the ticketer that manages this ticket
-    ticketer = models.ForeignKey(Ticketer, on_delete=models.PROTECT, related_name="tickets")
+    ticketer = models.ForeignKey(
+        Ticketer, on_delete=models.PROTECT, related_name="tickets"
+    )
 
     # the contact this ticket is tied to
-    contact = models.ForeignKey(Contact, on_delete=models.PROTECT, related_name="tickets")
+    contact = models.ForeignKey(
+        Contact, on_delete=models.PROTECT, related_name="tickets"
+    )
 
     # the subject of the ticket
     subject = models.TextField()
@@ -192,7 +204,9 @@ class Ticket(models.Model):
     # when this ticket last had activity which includes messages being sent and received, and is used for ordering
     last_activity_on = models.DateTimeField(default=timezone.now)
 
-    assignee = models.ForeignKey(User, on_delete=models.PROTECT, null=True, related_name="assigned_tickets")
+    assignee = models.ForeignKey(
+        User, on_delete=models.PROTECT, null=True, related_name="assigned_tickets"
+    )
 
     def assign(self, user: User, *, assignee: User, note: str):
         self.bulk_assign(self.org, user, [self], assignee=assignee, note=note)
@@ -201,10 +215,14 @@ class Ticket(models.Model):
         self.bulk_note(self.org, user, [self], note=note)
 
     @classmethod
-    def bulk_assign(cls, org, user: User, tickets: list, assignee: User, note: str = None):
+    def bulk_assign(
+        cls, org, user: User, tickets: list, assignee: User, note: str = None
+    ):
         ticket_ids = [t.id for t in tickets if t.ticketer.is_active]
         assignee_id = assignee.id if assignee else None
-        return mailroom.get_client().ticket_assign(org.id, user.id, ticket_ids, assignee_id, note)
+        return mailroom.get_client().ticket_assign(
+            org.id, user.id, ticket_ids, assignee_id, note
+        )
 
     @classmethod
     def bulk_note(cls, org, user: User, tickets: list, note: str):
@@ -231,10 +249,16 @@ class Ticket(models.Model):
     class Meta:
         indexes = [
             # used by the open folder
-            models.Index(name="tickets_org_open", fields=["org", "-last_activity_on", "-id"], condition=Q(status="O")),
+            models.Index(
+                name="tickets_org_open",
+                fields=["org", "-last_activity_on", "-id"],
+                condition=Q(status="O"),
+            ),
             # used by the closed folder
             models.Index(
-                name="tickets_org_closed", fields=["org", "-last_activity_on", "-id"], condition=Q(status="C")
+                name="tickets_org_closed",
+                fields=["org", "-last_activity_on", "-id"],
+                condition=Q(status="C"),
             ),
             # used by the unassigned and mine folders
             models.Index(
@@ -243,9 +267,15 @@ class Ticket(models.Model):
                 condition=Q(status="O"),
             ),
             # used by the list of tickets on contact page and also message handling to find open tickets for contact
-            models.Index(name="tickets_contact_open", fields=["contact", "-opened_on"], condition=Q(status="O")),
+            models.Index(
+                name="tickets_contact_open",
+                fields=["contact", "-opened_on"],
+                condition=Q(status="O"),
+            ),
             # used by ticket handlers in mailroom to find tickets from their external IDs
-            models.Index(name="tickets_ticketer_external_id", fields=["ticketer", "external_id"]),
+            models.Index(
+                name="tickets_ticketer_external_id", fields=["ticketer", "external_id"]
+            ),
         ]
 
 
@@ -269,20 +299,29 @@ class TicketEvent(models.Model):
 
     org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="ticket_events")
     ticket = models.ForeignKey(Ticket, on_delete=models.PROTECT, related_name="events")
-    contact = models.ForeignKey(Contact, on_delete=models.PROTECT, related_name="ticket_events")
+    contact = models.ForeignKey(
+        Contact, on_delete=models.PROTECT, related_name="ticket_events"
+    )
     event_type = models.CharField(max_length=1, choices=TYPE_CHOICES)
     note = models.TextField(null=True, max_length=Ticket.MAX_NOTE_LEN)
-    assignee = models.ForeignKey(User, on_delete=models.PROTECT, null=True, related_name="ticket_assignee_events")
+    assignee = models.ForeignKey(
+        User, on_delete=models.PROTECT, null=True, related_name="ticket_assignee_events"
+    )
 
     created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, related_name="ticket_events"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        related_name="ticket_events",
     )
     created_on = models.DateTimeField(default=timezone.now)
 
     class Meta:
         indexes = [
             # used for contact history
-            models.Index(name="ticketevents_contact_created", fields=["contact", "created_on"])
+            models.Index(
+                name="ticketevents_contact_created", fields=["contact", "created_on"]
+            )
         ]
 
 
@@ -292,7 +331,11 @@ class TicketFolder(metaclass=ABCMeta):
     icon = None
 
     def get_queryset(self, org, user):
-        return Ticket.objects.filter(org=org).order_by("-last_activity_on", "-id").prefetch_related("contact")
+        return (
+            Ticket.objects.filter(org=org)
+            .order_by("-last_activity_on", "-id")
+            .prefetch_related("contact")
+        )
 
     @classmethod
     def from_slug(cls, slug: str):
@@ -353,7 +396,9 @@ class TicketCount(SquashableModel):
     SQUASH_OVER = ("org_id", "assignee_id", "status")
 
     org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="ticket_counts")
-    assignee = models.ForeignKey(User, null=True, on_delete=models.PROTECT, related_name="ticket_counts")
+    assignee = models.ForeignKey(
+        User, null=True, on_delete=models.PROTECT, related_name="ticket_counts"
+    )
     status = models.CharField(max_length=1, choices=Ticket.STATUS_CHOICES)
     count = models.IntegerField(default=0)
 
@@ -370,7 +415,11 @@ class TicketCount(SquashableModel):
                 "table": cls._meta.db_table
             }
 
-            params = (distinct_set.org_id, distinct_set.assignee_id, distinct_set.status) * 2
+            params = (
+                distinct_set.org_id,
+                distinct_set.assignee_id,
+                distinct_set.status,
+            ) * 2
         else:
             sql = """
             WITH removed as (
@@ -410,6 +459,8 @@ class TicketCount(SquashableModel):
             models.Index(fields=("org", "assignee", "status")),
             # for squashing task
             models.Index(
-                name="ticket_count_unsquashed", fields=("org", "assignee", "status"), condition=Q(is_squashed=False)
+                name="ticket_count_unsquashed",
+                fields=("org", "assignee", "status"),
+                condition=Q(is_squashed=False),
             ),
         ]

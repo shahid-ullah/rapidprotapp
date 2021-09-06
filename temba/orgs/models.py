@@ -43,7 +43,8 @@ from temba.utils import chunk_list, json, languages
 from temba.utils.cache import get_cacheable_result
 from temba.utils.dates import datetime_to_str
 from temba.utils.email import send_template_email
-from temba.utils.models import JSONAsTextField, JSONField, SquashableModel
+from temba.utils.models import JSONAsTextField, SquashableModel
+from django.db.models import JSONField
 from temba.utils.s3 import public_file_storage
 from temba.utils.text import generate_token, random_string
 from temba.utils.timezones import timezone_to_country_code
@@ -82,7 +83,9 @@ class DependencyMixin:
 
         for dep_type, deps in self.get_dependents().items():
             if dep_type not in self.soft_dependent_types and deps.exists():
-                raise AssertionError(f"can't delete {self} that still has {dep_type} dependents")
+                raise AssertionError(
+                    f"can't delete {self} that still has {dep_type} dependents"
+                )
 
         self.dependent_flows.update(has_issues=True)
         self.dependent_flows.clear()
@@ -148,13 +151,35 @@ class IntegrationType(metaclass=ABCMeta):
 
 
 class OrgRole(Enum):
-    ADMINISTRATOR = ("A", _("Administrator"), _("Administrators"), "Administrators", "administrators", "org_admins")
+    ADMINISTRATOR = (
+        "A",
+        _("Administrator"),
+        _("Administrators"),
+        "Administrators",
+        "administrators",
+        "org_admins",
+    )
     EDITOR = ("E", _("Editor"), _("Editors"), "Editors", "editors", "org_editors")
     VIEWER = ("V", _("Viewer"), _("Viewers"), "Viewers", "viewers", "org_viewers")
     AGENT = ("T", _("Agent"), _("Agents"), "Agents", "agents", "org_agents")
-    SURVEYOR = ("S", _("Surveyor"), _("Surveyors"), "Surveyors", "surveyors", "org_surveyors")
+    SURVEYOR = (
+        "S",
+        _("Surveyor"),
+        _("Surveyors"),
+        "Surveyors",
+        "surveyors",
+        "org_surveyors",
+    )
 
-    def __init__(self, code: str, display: str, display_plural: str, group_name: str, m2m_name: str, rel_name: str):
+    def __init__(
+        self,
+        code: str,
+        display: str,
+        display_plural: str,
+        group_name: str,
+        m2m_name: str,
+        rel_name: str,
+    ):
         self.code = code
         self.display = display
         self.display_plural = display_plural
@@ -290,7 +315,9 @@ class Org(SmartModel):
     )
 
     # user role m2ms
-    administrators = models.ManyToManyField(User, related_name=OrgRole.ADMINISTRATOR.rel_name)
+    administrators = models.ManyToManyField(
+        User, related_name=OrgRole.ADMINISTRATOR.rel_name
+    )
     editors = models.ManyToManyField(User, related_name=OrgRole.EDITOR.rel_name)
     viewers = models.ManyToManyField(User, related_name=OrgRole.VIEWER.rel_name)
     agents = models.ManyToManyField(User, related_name=OrgRole.AGENT.rel_name)
@@ -342,17 +369,27 @@ class Org(SmartModel):
     limits = JSONField(default=dict)
 
     is_anon = models.BooleanField(
-        default=False, help_text=_("Whether this organization anonymizes the phone numbers of contacts within it")
+        default=False,
+        help_text=_(
+            "Whether this organization anonymizes the phone numbers of contacts within it"
+        ),
     )
 
-    is_flagged = models.BooleanField(default=False, help_text=_("Whether this organization is currently flagged."))
+    is_flagged = models.BooleanField(
+        default=False, help_text=_("Whether this organization is currently flagged.")
+    )
 
-    is_suspended = models.BooleanField(default=False, help_text=_("Whether this organization is currently suspended."))
+    is_suspended = models.BooleanField(
+        default=False, help_text=_("Whether this organization is currently suspended.")
+    )
 
-    uses_topups = models.BooleanField(default=True, help_text=_("Whether this organization uses topups."))
+    uses_topups = models.BooleanField(
+        default=True, help_text=_("Whether this organization uses topups.")
+    )
 
     is_multi_org = models.BooleanField(
-        default=False, help_text=_("Whether this organization can have child workspaces")
+        default=False,
+        help_text=_("Whether this organization can have child workspaces"),
     )
 
     is_multi_user = models.BooleanField(
@@ -369,7 +406,10 @@ class Org(SmartModel):
     )
 
     surveyor_password = models.CharField(
-        null=True, max_length=128, default=None, help_text=_("A password that allows users to register as surveyors")
+        null=True,
+        max_length=128,
+        default=None,
+        help_text=_("A password that allows users to register as surveyors"),
     )
 
     parent = models.ForeignKey(
@@ -464,8 +504,12 @@ class Org(SmartModel):
         """
         from temba.contacts.models import ContactGroup
 
-        counts = ContactGroup.get_system_group_counts(self, (ContactGroup.TYPE_ACTIVE, ContactGroup.TYPE_BLOCKED))
-        return (counts[ContactGroup.TYPE_ACTIVE] + counts[ContactGroup.TYPE_BLOCKED]) > 0
+        counts = ContactGroup.get_system_group_counts(
+            self, (ContactGroup.TYPE_ACTIVE, ContactGroup.TYPE_BLOCKED)
+        )
+        return (
+            counts[ContactGroup.TYPE_ACTIVE] + counts[ContactGroup.TYPE_BLOCKED]
+        ) > 0
 
     def get_integrations(self, category: IntegrationType.Category) -> list:
         """
@@ -479,7 +523,10 @@ class Org(SmartModel):
         Clears the given cache types (currently just credits) for this org. Returns number of keys actually deleted
         """
         r = get_redis_connection()
-        active_topup_keys = [ORG_ACTIVE_TOPUP_REMAINING % (self.pk, topup.pk) for topup in self.topups.all()]
+        active_topup_keys = [
+            ORG_ACTIVE_TOPUP_REMAINING % (self.pk, topup.pk)
+            for topup in self.topups.all()
+        ]
         return r.delete(
             ORG_CREDITS_TOTAL_CACHE_KEY % self.pk,
             ORG_CREDIT_EXPIRING_CACHE_KEY % self.pk,
@@ -538,12 +585,18 @@ class Org(SmartModel):
             same_site = urlparse(export_site).netloc == urlparse(site).netloc
 
         # do we have a supported export version?
-        if not (Version(Org.EARLIEST_IMPORT_VERSION) <= export_version <= Version(Org.CURRENT_EXPORT_VERSION)):
+        if not (
+            Version(Org.EARLIEST_IMPORT_VERSION)
+            <= export_version
+            <= Version(Org.CURRENT_EXPORT_VERSION)
+        ):
             raise ValueError(f"Unsupported export version {export_version}")
 
         # do we need to migrate the export forward?
         if export_version < Version(Flow.CURRENT_SPEC_VERSION):
-            export_json = Flow.migrate_export(self, export_json, same_site, export_version)
+            export_json = Flow.migrate_export(
+                self, export_json, same_site, export_version
+            )
 
         self.validate_import(export_json)
 
@@ -558,10 +611,14 @@ class Org(SmartModel):
             ContactField.import_fields(self, user, export_fields)
             ContactGroup.import_groups(self, user, export_groups, dependency_mapping)
 
-            new_flows = Flow.import_flows(self, user, export_json, dependency_mapping, same_site)
+            new_flows = Flow.import_flows(
+                self, user, export_json, dependency_mapping, same_site
+            )
 
             # these depend on flows so are imported last
-            new_campaigns = Campaign.import_campaigns(self, user, export_campaigns, same_site)
+            new_campaigns = Campaign.import_campaigns(
+                self, user, export_campaigns, same_site
+            )
             Trigger.import_triggers(self, user, export_triggers, same_site)
 
         # queue mailroom tasks to schedule campaign events
@@ -570,7 +627,9 @@ class Org(SmartModel):
 
         # with all the flows and dependencies committed, we can now have mailroom do full validation
         for flow in new_flows:
-            flow_info = mailroom.get_client().flow_inspect(self.id, flow.get_definition())
+            flow_info = mailroom.get_client().flow_inspect(
+                self.id, flow.get_definition()
+            )
             flow.has_issues = len(flow_info[Flow.INSPECT_ISSUES]) > 0
             flow.save(update_fields=("has_issues",))
 
@@ -581,7 +640,9 @@ class Org(SmartModel):
             Trigger.validate_import_def(trigger_def)
 
     @classmethod
-    def export_definitions(cls, site_link, components, include_fields=True, include_groups=True):
+    def export_definitions(
+        cls, site_link, components, include_fields=True, include_groups=True
+    ):
         from temba.contacts.models import ContactField
         from temba.campaigns.models import Campaign
         from temba.flows.models import Flow
@@ -652,7 +713,9 @@ class Org(SmartModel):
         """
         from temba.channels.models import Channel
 
-        channels = self.channels.filter(is_active=True, role__contains=role).order_by("-id")
+        channels = self.channels.filter(is_active=True, role__contains=role).order_by(
+            "-id"
+        )
 
         if scheme is not None:
             channels = channels.filter(schemes__contains=[scheme])
@@ -714,7 +777,9 @@ class Org(SmartModel):
     def cached_active_contacts_group(self):
         from temba.contacts.models import ContactGroup
 
-        return ContactGroup.all_groups.get(org=self, group_type=ContactGroup.TYPE_ACTIVE)
+        return ContactGroup.all_groups.get(
+            org=self, group_type=ContactGroup.TYPE_ACTIVE
+        )
 
     def get_resthooks(self):
         """
@@ -737,7 +802,9 @@ class Org(SmartModel):
         from temba.msgs.models import Msg
 
         # sync all pending channels
-        for channel in self.channels.filter(is_active=True, channel_type=AndroidType.code):  # pragma: needs cover
+        for channel in self.channels.filter(
+            is_active=True, channel_type=AndroidType.code
+        ):  # pragma: needs cover
             channel.trigger_sync()
 
         # otherwise, send any pending messages on our channels
@@ -756,7 +823,11 @@ class Org(SmartModel):
         password = quote(password, safe="")
         query = urlencode({"from": f"{from_email.strip()}", "tls": "true"})
 
-        self.config.update({Org.CONFIG_SMTP_SERVER: f"smtp://{username}:{password}@{host}:{port}/?{query}"})
+        self.config.update(
+            {
+                Org.CONFIG_SMTP_SERVER: f"smtp://{username}:{password}@{host}:{port}/?{query}"
+            }
+        )
         self.modified_by = user
         self.save(update_fields=("config", "modified_by", "modified_on"))
 
@@ -777,29 +848,42 @@ class Org(SmartModel):
         return AirtimeTransfer.objects.filter(org=self).exists()
 
     def connect_vonage(self, api_key, api_secret, user):
-        self.config.update({Org.CONFIG_VONAGE_KEY: api_key.strip(), Org.CONFIG_VONAGE_SECRET: api_secret.strip()})
+        self.config.update(
+            {
+                Org.CONFIG_VONAGE_KEY: api_key.strip(),
+                Org.CONFIG_VONAGE_SECRET: api_secret.strip(),
+            }
+        )
         self.modified_by = user
         self.save(update_fields=("config", "modified_by", "modified_on"))
 
     def connect_twilio(self, account_sid, account_token, user):
-        self.config.update({Org.CONFIG_TWILIO_SID: account_sid, Org.CONFIG_TWILIO_TOKEN: account_token})
+        self.config.update(
+            {Org.CONFIG_TWILIO_SID: account_sid, Org.CONFIG_TWILIO_TOKEN: account_token}
+        )
         self.modified_by = user
         self.save(update_fields=("config", "modified_by", "modified_on"))
 
     def is_connected_to_vonage(self):
         if self.config:
-            return self.config.get(Org.CONFIG_VONAGE_KEY) and self.config.get(Org.CONFIG_VONAGE_SECRET)
+            return self.config.get(Org.CONFIG_VONAGE_KEY) and self.config.get(
+                Org.CONFIG_VONAGE_SECRET
+            )
         return False
 
     def is_connected_to_twilio(self):
         if self.config:
-            return self.config.get(Org.CONFIG_TWILIO_SID) and self.config.get(Org.CONFIG_TWILIO_TOKEN)
+            return self.config.get(Org.CONFIG_TWILIO_SID) and self.config.get(
+                Org.CONFIG_TWILIO_TOKEN
+            )
         return False
 
     def remove_vonage_account(self, user):
         if self.config:
             # release any vonage channels
-            for channel in self.channels.filter(is_active=True, channel_type="NX"):  # pragma: needs cover
+            for channel in self.channels.filter(
+                is_active=True, channel_type="NX"
+            ):  # pragma: needs cover
                 channel.release(user)
 
             self.config.pop(Org.CONFIG_VONAGE_KEY, None)
@@ -810,7 +894,9 @@ class Org(SmartModel):
     def remove_twilio_account(self, user):
         if self.config:
             # release any Twilio and Twilio Messaging Service channels
-            for channel in self.channels.filter(is_active=True, channel_type__in=["T", "TMS"]):
+            for channel in self.channels.filter(
+                is_active=True, channel_type__in=["T", "TMS"]
+            ):
                 channel.release(user)
 
             self.config.pop(Org.CONFIG_TWILIO_SID, None)
@@ -881,7 +967,9 @@ class Org(SmartModel):
         Sets languages used in flows for this org, creating and deleting language objects as necessary
         """
 
-        assert all([languages.get_name(c) for c in codes]), "not a valid or allowed language"
+        assert all(
+            [languages.get_name(c) for c in codes]
+        ), "not a valid or allowed language"
         assert len(set(codes)) == len(codes), "language code list contains duplicates"
 
         self.flow_languages = codes
@@ -927,7 +1015,9 @@ class Org(SmartModel):
         """
 
         app_label, codename = perm.split(".")
-        permission = Permission.objects.get(content_type__app_label=app_label, codename=codename)
+        permission = Permission.objects.get(
+            content_type__app_label=app_label, codename=codename
+        )
         groups = Group.objects.filter(permissions=permission)
 
         return self.get_users(roles=[OrgRole.from_group(g) for g in groups])
@@ -1001,7 +1091,9 @@ class Org(SmartModel):
 
     def create_sample_flows(self, api_url):
         # get our sample dir
-        filename = os.path.join(settings.STATICFILES_DIRS[0], "examples", "sample_flows.json")
+        filename = os.path.join(
+            settings.STATICFILES_DIRS[0], "examples", "sample_flows.json"
+        )
 
         # for each of our samples
         with open(filename, "r") as example_file:
@@ -1010,7 +1102,9 @@ class Org(SmartModel):
         user = self.get_admins().first()
         if user:
             # some some substitutions
-            samples = samples.replace("{{EMAIL}}", user.username).replace("{{API_URL}}", api_url)
+            samples = samples.replace("{{EMAIL}}", user.username).replace(
+                "{{API_URL}}", api_url
+            )
 
             try:
                 self.import_app(json.loads(samples), user)
@@ -1029,14 +1123,17 @@ class Org(SmartModel):
         Get the credits number to consider as low threshold to this org
         """
         return get_cacheable_result(
-            ORG_LOW_CREDIT_THRESHOLD_CACHE_KEY % self.pk, self._calculate_low_credits_threshold
+            ORG_LOW_CREDIT_THRESHOLD_CACHE_KEY % self.pk,
+            self._calculate_low_credits_threshold,
         )
 
     def _calculate_low_credits_threshold(self):
         now = timezone.now()
         unexpired_topups = self.topups.filter(is_active=True, expires_on__gte=now)
 
-        active_topup_credits = [topup.credits for topup in unexpired_topups if topup.get_remaining() > 0]
+        active_topup_credits = [
+            topup.credits for topup in unexpired_topups if topup.get_remaining() > 0
+        ]
         last_topup_credits = sum(active_topup_credits)
 
         return int(last_topup_credits * 0.15), self.get_credit_ttl()
@@ -1046,7 +1143,9 @@ class Org(SmartModel):
         Gets the total number of credits purchased or assigned to this org
         """
         return get_cacheable_result(
-            ORG_CREDITS_TOTAL_CACHE_KEY % self.pk, self._calculate_credits_total, force_dirty=force_dirty
+            ORG_CREDITS_TOTAL_CACHE_KEY % self.pk,
+            self._calculate_credits_total,
+            force_dirty=force_dirty,
         )
 
     def get_purchased_credits(self):
@@ -1054,11 +1153,15 @@ class Org(SmartModel):
         Returns the total number of credits purchased
         :return:
         """
-        return get_cacheable_result(ORG_CREDITS_PURCHASED_CACHE_KEY % self.pk, self._calculate_purchased_credits)
+        return get_cacheable_result(
+            ORG_CREDITS_PURCHASED_CACHE_KEY % self.pk, self._calculate_purchased_credits
+        )
 
     def _calculate_purchased_credits(self):
         purchased_credits = (
-            self.topups.filter(is_active=True, price__gt=0).aggregate(Sum("credits")).get("credits__sum")
+            self.topups.filter(is_active=True, price__gt=0)
+            .aggregate(Sum("credits"))
+            .get("credits__sum")
         )
         return purchased_credits if purchased_credits else 0, self.get_credit_ttl()
 
@@ -1072,7 +1175,11 @@ class Org(SmartModel):
 
         # these are the credits that have been used in expired topups
         expired_credits = (
-            TopUpCredits.objects.filter(topup__org=self, topup__is_active=True, topup__expires_on__lte=timezone.now())
+            TopUpCredits.objects.filter(
+                topup__org=self,
+                topup__is_active=True,
+                topup__expires_on__lte=timezone.now(),
+            )
             .aggregate(Sum("used"))
             .get("used__sum")
         )
@@ -1085,10 +1192,14 @@ class Org(SmartModel):
         """
         Gets the number of credits used by this org
         """
-        return get_cacheable_result(ORG_CREDITS_USED_CACHE_KEY % self.pk, self._calculate_credits_used)
+        return get_cacheable_result(
+            ORG_CREDITS_USED_CACHE_KEY % self.pk, self._calculate_credits_used
+        )
 
     def _calculate_credits_used(self):
-        used_credits_sum = TopUpCredits.objects.filter(topup__org=self, topup__is_active=True)
+        used_credits_sum = TopUpCredits.objects.filter(
+            topup__org=self, topup__is_active=True
+        )
         used_credits_sum = used_credits_sum.aggregate(Sum("used")).get("used__sum")
         used_credits_sum = used_credits_sum if used_credits_sum else 0
 
@@ -1114,9 +1225,9 @@ class Org(SmartModel):
         decremented is not guaranteed to be the full amount requested.
         """
         # if we have an active topup cache, we need to decrement the amount remaining
-        non_expired_topups = self.topups.filter(is_active=True, expires_on__gte=timezone.now()).order_by(
-            "-expires_on", "id"
-        )
+        non_expired_topups = self.topups.filter(
+            is_active=True, expires_on__gte=timezone.now()
+        ).order_by("-expires_on", "id")
         active_topups = (
             non_expired_topups.annotate(used_credits=Sum("topupcredits__used"))
             .filter(credits__gt=0)
@@ -1158,7 +1269,11 @@ class Org(SmartModel):
 
                             # create the topup for our child, expiring on the same date
                             new_topup = TopUp.create(
-                                user, credits=debited, org=org, expires_on=topup.expires_on, price=None
+                                user,
+                                credits=debited,
+                                org=org,
+                                expires_on=topup.expires_on,
+                                price=None,
                             )
 
                             # create a debit for transaction history
@@ -1197,7 +1312,9 @@ class Org(SmartModel):
 
     def get_active_topup_id(self, force_dirty=False):
         return get_cacheable_result(
-            ORG_ACTIVE_TOPUP_KEY % self.pk, self._calculate_active_topup, force_dirty=force_dirty
+            ORG_ACTIVE_TOPUP_KEY % self.pk,
+            self._calculate_active_topup,
+            force_dirty=force_dirty,
         )
 
     def get_credit_ttl(self):
@@ -1215,15 +1332,23 @@ class Org(SmartModel):
         if not topup:
             return 10
 
-        return max(10, min((ORG_CREDITS_CACHE_TTL, int((topup.expires_on - timezone.now()).total_seconds()))))
+        return max(
+            10,
+            min(
+                (
+                    ORG_CREDITS_CACHE_TTL,
+                    int((topup.expires_on - timezone.now()).total_seconds()),
+                )
+            ),
+        )
 
     def _calculate_active_topup(self):
         """
         Calculates the oldest non-expired topup that still has credits
         """
-        non_expired_topups = self.topups.filter(is_active=True, expires_on__gte=timezone.now()).order_by(
-            "expires_on", "id"
-        )
+        non_expired_topups = self.topups.filter(
+            is_active=True, expires_on__gte=timezone.now()
+        ).order_by("expires_on", "id")
         active_topups = (
             non_expired_topups.annotate(used_credits=Sum("topupcredits__used"))
             .filter(credits__gt=0)
@@ -1235,7 +1360,11 @@ class Org(SmartModel):
             # initialize our active topup metrics
             r = get_redis_connection()
             ttl = self.get_topup_ttl(topup)
-            r.set(ORG_ACTIVE_TOPUP_REMAINING % (self.id, topup.id), topup.get_remaining(), ttl)
+            r.set(
+                ORG_ACTIVE_TOPUP_REMAINING % (self.id, topup.id),
+                topup.get_remaining(),
+                ttl,
+            )
             return topup.id, ttl
 
         return 0, 0
@@ -1254,7 +1383,9 @@ class Org(SmartModel):
 
             # get all topups that haven't expired
             unexpired_topups = list(
-                self.topups.filter(is_active=True, expires_on__gte=timezone.now()).order_by("-expires_on")
+                self.topups.filter(
+                    is_active=True, expires_on__gte=timezone.now()
+                ).order_by("-expires_on")
             )
 
             # dict of topups to lists of their newly assigned items
@@ -1271,7 +1402,9 @@ class Org(SmartModel):
                         break
 
                     current_topup = unexpired_topups.pop()
-                    current_topup_remaining = current_topup.credits - current_topup.get_used()
+                    current_topup_remaining = (
+                        current_topup.credits - current_topup.get_used()
+                    )
 
                 if current_topup_remaining:
                     # if we found some credit, assign the item to the current topup
@@ -1313,10 +1446,14 @@ class Org(SmartModel):
         Using our topups and brand settings, figures out whether this org should be multi-user and multi-org. We never
         disable one of these capabilities, but will turn it on for those that qualify via credits
         """
-        if self.get_purchased_credits() >= self.get_branding().get("tiers", {}).get("multi_org", 0):
+        if self.get_purchased_credits() >= self.get_branding().get("tiers", {}).get(
+            "multi_org", 0
+        ):
             self.is_multi_org = True
 
-        if self.get_purchased_credits() >= self.get_branding().get("tiers", {}).get("multi_user", 0):
+        if self.get_purchased_credits() >= self.get_branding().get("tiers", {}).get(
+            "multi_user", 0
+        ):
             self.is_multi_user = True
 
         self.save(update_fields=("is_multi_user", "is_multi_org"))
@@ -1362,7 +1499,9 @@ class Org(SmartModel):
 
             if not customer or customer.email != user.email:
                 # then go create a customer object for this user
-                customer = stripe.Customer.create(card=token, email=user.email, description="{ org: %d }" % self.pk)
+                customer = stripe.Customer.create(
+                    card=token, email=user.email, description="{ org: %d }" % self.pk
+                )
 
                 stripe_customer = customer.id
                 self.stripe_customer = stripe_customer
@@ -1385,14 +1524,21 @@ class Org(SmartModel):
                 stripe_customer = customer.id
 
             charge = stripe.Charge.create(
-                amount=bundle["cents"], currency="usd", customer=stripe_customer, description=bundle["description"]
+                amount=bundle["cents"],
+                currency="usd",
+                customer=stripe_customer,
+                description=bundle["description"],
             )
 
             remaining = self.get_credits_remaining()
 
             # create our top up
             topup = TopUp.create(
-                user, price=bundle["cents"], credits=bundle["credits"], stripe_charge=charge.id, org=self
+                user,
+                price=bundle["cents"],
+                credits=bundle["credits"],
+                stripe_charge=charge.id,
+                org=self,
             )
 
             context = dict(
@@ -1438,7 +1584,9 @@ class Org(SmartModel):
 
         except stripe.error.CardError as e:
             logger.warning(f"Error adding credits to org: {str(e)}", exc_info=True)
-            validation_error = _("Sorry, your card was declined, please contact your provider or try another card.")
+            validation_error = _(
+                "Sorry, your card was declined, please contact your provider or try another card."
+            )
 
         except Exception as e:
             logger.error(f"Error adding credits to org: {str(e)}", exc_info=True)
@@ -1459,7 +1607,9 @@ class Org(SmartModel):
             paid = 0
         return paid / 100
 
-    def generate_dependency_graph(self, include_campaigns=True, include_triggers=False, include_archived=False):
+    def generate_dependency_graph(
+        self, include_campaigns=True, include_triggers=False, include_archived=False
+    ):
         """
         Generates a dict of all exportable flows and campaigns for this org with each object's immediate dependencies
         """
@@ -1470,7 +1620,9 @@ class Org(SmartModel):
         campaign_prefetches = (
             Prefetch(
                 "events",
-                queryset=CampaignEvent.objects.filter(is_active=True).exclude(flow__is_system=True),
+                queryset=CampaignEvent.objects.filter(is_active=True).exclude(
+                    flow__is_system=True
+                ),
                 to_attr="flow_events",
             ),
             "flow_events__flow",
@@ -1480,7 +1632,9 @@ class Org(SmartModel):
 
         if include_campaigns:
             all_campaigns = (
-                self.campaigns.filter(is_active=True).select_related("group").prefetch_related(*campaign_prefetches)
+                self.campaigns.filter(is_active=True)
+                .select_related("group")
+                .prefetch_related(*campaign_prefetches)
             )
         else:
             all_campaigns = Campaign.objects.none()
@@ -1500,7 +1654,9 @@ class Org(SmartModel):
         # in flow-group-flow relationships - only relationships that go through a campaign
         campaigns_by_group = defaultdict(list)
         if include_campaigns:
-            for campaign in self.campaigns.filter(is_active=True).select_related("group"):
+            for campaign in self.campaigns.filter(is_active=True).select_related(
+                "group"
+            ):
                 campaigns_by_group[campaign.group].append(campaign)
 
         for c, deps in dependencies.items():
@@ -1514,7 +1670,9 @@ class Org(SmartModel):
                         deps.update(campaigns_by_group[d])
 
         if include_triggers:
-            all_triggers = self.triggers.filter(is_archived=False, is_active=True).select_related("flow")
+            all_triggers = self.triggers.filter(
+                is_archived=False, is_active=True
+            ).select_related("flow")
             for trigger in all_triggers:
                 dependencies[trigger] = {trigger.flow}
 
@@ -1526,13 +1684,20 @@ class Org(SmartModel):
         return dependencies
 
     def resolve_dependencies(
-        self, flows, campaigns, include_campaigns=True, include_triggers=False, include_archived=False
+        self,
+        flows,
+        campaigns,
+        include_campaigns=True,
+        include_triggers=False,
+        include_archived=False,
     ):
         """
         Given a set of flows and and a set of campaigns, returns a new set including all dependencies
         """
         dependencies = self.generate_dependency_graph(
-            include_campaigns=include_campaigns, include_triggers=include_triggers, include_archived=include_archived
+            include_campaigns=include_campaigns,
+            include_triggers=include_triggers,
+            include_archived=include_archived,
         )
 
         primary_components = set(itertools.chain(flows, campaigns))
@@ -1602,7 +1767,8 @@ class Org(SmartModel):
 
         else:
             raise Exception(
-                "Received non-200 response (%s) for request: %s" % (response.status_code, response.content)
+                "Received non-200 response (%s) for request: %s"
+                % (response.status_code, response.content)
             )
 
         return self.save_media(File(temp), extension)
@@ -1612,7 +1778,11 @@ class Org(SmartModel):
         Gets the most recent date for which data hasn't been deleted yet or None if no deletion has been done
         :return:
         """
-        archive = self.archives.filter(needs_deletion=False, archive_type=archive_type).order_by("-start_date").first()
+        archive = (
+            self.archives.filter(needs_deletion=False, archive_type=archive_type)
+            .order_by("-start_date")
+            .first()
+        )
         if archive:
             return archive.get_end_date()
 
@@ -1645,7 +1815,9 @@ class Org(SmartModel):
         self.is_active = False
         self.modified_by = user
         self.released_on = timezone.now()
-        self.save(update_fields=("is_active", "released_on", "modified_by", "modified_on"))
+        self.save(
+            update_fields=("is_active", "released_on", "modified_by", "modified_on")
+        )
 
         # and immediately release our channels to halt messaging
         for channel in self.channels.filter(is_active=True):
@@ -1668,7 +1840,9 @@ class Org(SmartModel):
         Does an actual delete of this org
         """
 
-        assert not self.is_active and self.released_on, "can't delete an org which hasn't been released"
+        assert (
+            not self.is_active and self.released_on
+        ), "can't delete an org which hasn't been released"
         assert not self.deleted_on, "can't delete an org twice"
 
         user = self.modified_by
@@ -1939,14 +2113,18 @@ def _user_has_org_perm(user, org, permission):
 
     (app_label, codename) = permission.split(".")
 
-    return org_group.permissions.filter(content_type__app_label=app_label, codename=codename).exists()
+    return org_group.permissions.filter(
+        content_type__app_label=app_label, codename=codename
+    ).exists()
 
 
 def _user_get_settings(user):
     """
     Gets or creates user settings for this user
     """
-    assert user and user.is_authenticated, "can't fetch user settings for anonymous users"
+    assert (
+        user and user.is_authenticated
+    ), "can't fetch user settings for anonymous users"
 
     return UserSettings.get_or_create(user)
 
@@ -2033,10 +2211,12 @@ User.__str__ = _user_str
 
 def get_stripe_credentials():
     public_key = os.environ.get(
-        "STRIPE_PUBLIC_KEY", getattr(settings, "STRIPE_PUBLIC_KEY", "MISSING_STRIPE_PUBLIC_KEY")
+        "STRIPE_PUBLIC_KEY",
+        getattr(settings, "STRIPE_PUBLIC_KEY", "MISSING_STRIPE_PUBLIC_KEY"),
     )
     private_key = os.environ.get(
-        "STRIPE_PRIVATE_KEY", getattr(settings, "STRIPE_PRIVATE_KEY", "MISSING_STRIPE_PRIVATE_KEY")
+        "STRIPE_PRIVATE_KEY",
+        getattr(settings, "STRIPE_PRIVATE_KEY", "MISSING_STRIPE_PRIVATE_KEY"),
     )
     return (public_key, private_key)
 
@@ -2054,11 +2234,19 @@ class Invitation(SmartModel):
 
     secret = models.CharField(max_length=64, unique=True)
 
-    user_group = models.CharField(max_length=1, choices=ROLE_CHOICES, default=OrgRole.VIEWER.code)
+    user_group = models.CharField(
+        max_length=1, choices=ROLE_CHOICES, default=OrgRole.VIEWER.code
+    )
 
     @classmethod
     def create(cls, org, user, email, role: OrgRole):
-        return cls.objects.create(org=org, email=email, user_group=role.code, created_by=user, modified_by=user)
+        return cls.objects.create(
+            org=org,
+            email=email,
+            user_group=role.code,
+            created_by=user,
+            modified_by=user,
+        )
 
     @classmethod
     def bulk_create_or_update(cls, org, user, emails: list, role: OrgRole):
@@ -2099,7 +2287,9 @@ class Invitation(SmartModel):
         template = "orgs/email/invitation_email"
         to_email = self.email
 
-        context = dict(org=self.org, now=timezone.now(), branding=branding, invitation=self)
+        context = dict(
+            org=self.org, now=timezone.now(), branding=branding, invitation=self
+        )
         context["subject"] = subject
 
         send_template_email(to_email, subject, template, context, branding)
@@ -2111,8 +2301,10 @@ class UserSettings(models.Model):
     """
 
     user = models.ForeignKey(User, on_delete=models.PROTECT, related_name="settings")
-    language = models.CharField(max_length=8, choices=settings.LANGUAGES, default=settings.DEFAULT_LANGUAGE)
-    otp_secret = models.CharField(max_length=16, default=pyotp.random_base32)
+    language = models.CharField(
+        max_length=8, choices=settings.LANGUAGES, default=settings.DEFAULT_LANGUAGE
+    )
+    otp_secret = models.CharField(max_length=200, default=pyotp.random_base32)
     two_factor_enabled = models.BooleanField(default=False)
     last_auth_on = models.DateTimeField(null=True)
 
@@ -2132,7 +2324,10 @@ class TopUp(SmartModel):
     """
 
     org = models.ForeignKey(
-        Org, on_delete=models.PROTECT, related_name="topups", help_text="The organization that was toppped up"
+        Org,
+        on_delete=models.PROTECT,
+        related_name="topups",
+        help_text="The organization that was toppped up",
     )
     price = models.IntegerField(
         null=True,
@@ -2141,10 +2336,12 @@ class TopUp(SmartModel):
         help_text=_("The price paid for the messages in this top up (in cents)"),
     )
     credits = models.IntegerField(
-        verbose_name=_("Number of Credits"), help_text=_("The number of credits bought in this top up")
+        verbose_name=_("Number of Credits"),
+        help_text=_("The number of credits bought in this top up"),
     )
     expires_on = models.DateTimeField(
-        verbose_name=_("Expiration Date"), help_text=_("The date that this top up will expire")
+        verbose_name=_("Expiration Date"),
+        help_text=_("The date that this top up will expire"),
     )
     stripe_charge = models.CharField(
         verbose_name=_("Stripe Charge Id"),
@@ -2161,7 +2358,9 @@ class TopUp(SmartModel):
     )
 
     @classmethod
-    def create(cls, user, price, credits, stripe_charge=None, org=None, expires_on=None):
+    def create(
+        cls, user, price, credits, stripe_charge=None, org=None, expires_on=None
+    ):
         """
         Creates a new topup
         """
@@ -2201,7 +2400,9 @@ class TopUp(SmartModel):
         self.delete()
 
     def get_ledger(self):  # pragma: needs cover
-        debits = self.debits.filter(debit_type=Debit.TYPE_ALLOCATION).order_by("-created_by")
+        debits = self.debits.filter(debit_type=Debit.TYPE_ALLOCATION).order_by(
+            "-created_by"
+        )
         balance = self.credits
         ledger = []
 
@@ -2222,14 +2423,22 @@ class TopUp(SmartModel):
                 else:
                     comment = _("Credits")
 
-            ledger.append(dict(date=self.created_on, comment=comment, amount=self.credits, balance=self.credits))
+            ledger.append(
+                dict(
+                    date=self.created_on,
+                    comment=comment,
+                    amount=self.credits,
+                    balance=self.credits,
+                )
+            )
 
         for debit in debits:  # pragma: needs cover
             balance -= debit.amount
             ledger.append(
                 dict(
                     date=debit.created_on,
-                    comment=_("Transfer to %(org)s") % dict(org=debit.beneficiary.org.name),
+                    comment=_("Transfer to %(org)s")
+                    % dict(org=debit.beneficiary.org.name),
                     amount=-debit.amount,
                     balance=balance,
                 )
@@ -2252,7 +2461,12 @@ class TopUp(SmartModel):
         # add a line for expired credits
         if expired and self.get_remaining() > 0:
             ledger.append(
-                dict(date=self.expires_on, comment=_("Expired credits"), amount=-self.get_remaining(), balance=0)
+                dict(
+                    date=self.expires_on,
+                    comment=_("Expired credits"),
+                    amount=-self.get_remaining(),
+                    balance=0,
+                )
             )
         return ledger
 
@@ -2332,7 +2546,12 @@ class Debit(models.Model):
         help_text=_("Optional topup that was allocated with these credits"),
     )
 
-    debit_type = models.CharField(max_length=1, choices=DEBIT_TYPES, null=False, help_text=_("What caused this debit"))
+    debit_type = models.CharField(
+        max_length=1,
+        choices=DEBIT_TYPES,
+        null=False,
+        help_text=_("What caused this debit"),
+    )
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -2341,7 +2560,9 @@ class Debit(models.Model):
         related_name="debits_created",
         help_text="The user which originally created this item",
     )
-    created_on = models.DateTimeField(default=timezone.now, help_text="When this item was originally created")
+    created_on = models.DateTimeField(
+        default=timezone.now, help_text="When this item was originally created"
+    )
 
 
 class TopUpCredits(SquashableModel):
@@ -2383,7 +2604,11 @@ class CreditAlert(SmartModel):
     TYPE_OVER = "O"
     TYPE_LOW = "L"
     TYPE_EXPIRING = "E"
-    TYPES = ((TYPE_OVER, _("Credits Over")), (TYPE_LOW, _("Low Credits")), (TYPE_EXPIRING, _("Credits expiring soon")))
+    TYPES = (
+        (TYPE_OVER, _("Credits Over")),
+        (TYPE_LOW, _("Low Credits")),
+        (TYPE_EXPIRING, _("Credits expiring soon")),
+    )
 
     org = models.ForeignKey(Org, on_delete=models.PROTECT, related_name="credit_alerts")
 
@@ -2401,7 +2626,9 @@ class CreditAlert(SmartModel):
 
         if admin:
             # Otherwise, create our alert objects and trigger our event
-            alert = CreditAlert.objects.create(org=org, alert_type=alert_type, created_by=admin, modified_by=admin)
+            alert = CreditAlert.objects.create(
+                org=org, alert_type=alert_type, created_by=admin, modified_by=admin
+            )
 
             alert.send_alert()
 
@@ -2411,7 +2638,9 @@ class CreditAlert(SmartModel):
         send_alert_email_task(self.id)
 
     def send_email(self):
-        admin_emails = [admin.email for admin in self.org.get_admins().order_by("email")]
+        admin_emails = [
+            admin.email for admin in self.org.get_admins().order_by("email")
+        ]
 
         if len(admin_emails) == 0:
             return
@@ -2421,7 +2650,13 @@ class CreditAlert(SmartModel):
         template = "orgs/email/alert_email"
         to_email = admin_emails
 
-        context = dict(org=self.org, now=timezone.now(), branding=branding, alert=self, customer=self.created_by)
+        context = dict(
+            org=self.org,
+            now=timezone.now(),
+            branding=branding,
+            alert=self,
+            customer=self.created_by,
+        )
         context["subject"] = subject
 
         send_template_email(to_email, subject, template, context, branding)
@@ -2435,7 +2670,9 @@ class CreditAlert(SmartModel):
         from temba.msgs.models import Msg
 
         # all active orgs in the last hour
-        active_orgs = Msg.objects.filter(created_on__gte=timezone.now() - timedelta(hours=1), org__uses_topups=True)
+        active_orgs = Msg.objects.filter(
+            created_on__gte=timezone.now() - timedelta(hours=1), org__uses_topups=True
+        )
         active_orgs = active_orgs.order_by("org").distinct("org")
 
         for msg in active_orgs:
@@ -2459,7 +2696,12 @@ class CreditAlert(SmartModel):
 
         # get the ids of the last to expire topup, with credits, for each org
         final_topups = (
-            TopUp.objects.filter(is_active=True, org__is_active=True, org__uses_topups=True, credits__gt=0)
+            TopUp.objects.filter(
+                is_active=True,
+                org__is_active=True,
+                org__uses_topups=True,
+                credits__gt=0,
+            )
             .order_by("org_id", "-expires_on")
             .distinct("org_id")
             .values_list("id", flat=True)
@@ -2469,7 +2711,10 @@ class CreditAlert(SmartModel):
         expiring_final_topups = (
             TopUp.objects.filter(id__in=final_topups)
             .annotate(used_credits=Sum("topupcredits__used"))
-            .filter(expires_on__gt=timezone.now(), expires_on__lte=(timezone.now() + timedelta(days=30)))
+            .filter(
+                expires_on__gt=timezone.now(),
+                expires_on__lte=(timezone.now() + timedelta(days=30)),
+            )
             .filter(Q(used_credits__lt=F("credits")) | Q(used_credits=None))
             .select_related("org")
         )
@@ -2483,7 +2728,9 @@ class BackupToken(models.Model):
     A 2FA backup token for a user
     """
 
-    user = models.ForeignKey(User, related_name="backup_tokens", on_delete=models.PROTECT)
+    user = models.ForeignKey(
+        User, related_name="backup_tokens", on_delete=models.PROTECT
+    )
     token = models.CharField(max_length=18, unique=True, default=generate_token)
     is_used = models.BooleanField(default=False)
     created_on = models.DateTimeField(default=timezone.now)
@@ -2510,7 +2757,9 @@ class OrgActivity(models.Model):
     """
 
     # the org this contact activity is being tracked for
-    org = models.ForeignKey("orgs.Org", related_name="contact_activity", on_delete=models.CASCADE)
+    org = models.ForeignKey(
+        "orgs.Org", related_name="contact_activity", on_delete=models.CASCADE
+    )
 
     # the day this activity was tracked for
     day = models.DateField()
@@ -2538,7 +2787,9 @@ class OrgActivity(models.Model):
         from temba.msgs.models import Msg
 
         # truncate to midnight the same day in UTC
-        end = pytz.utc.normalize(now.astimezone(pytz.utc)).replace(hour=0, minute=0, second=0, microsecond=0)
+        end = pytz.utc.normalize(now.astimezone(pytz.utc)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
         start = end - timedelta(days=1)
 
         # first get all our contact counts
@@ -2554,13 +2805,19 @@ class OrgActivity(models.Model):
 
         # number of received msgs
         incoming_count = Org.objects.filter(
-            is_active=True, msgs__created_on__gte=start, msgs__created_on__lt=end, msgs__direction="I"
+            is_active=True,
+            msgs__created_on__gte=start,
+            msgs__created_on__lt=end,
+            msgs__direction="I",
         ).annotate(msg_count=Count("id"))
         incoming_count = {o.id: o.msg_count for o in incoming_count}
 
         # number of sent messages
         outgoing_count = Org.objects.filter(
-            is_active=True, msgs__created_on__gte=start, msgs__created_on__lt=end, msgs__direction="O"
+            is_active=True,
+            msgs__created_on__gte=start,
+            msgs__created_on__lt=end,
+            msgs__direction="O",
         ).annotate(msg_count=Count("id"))
         outgoing_count = {o.id: o.msg_count for o in outgoing_count}
 
@@ -2574,7 +2831,9 @@ class OrgActivity(models.Model):
         ):
             plan_end = org.plan_end if org.plan_end < end else end
             count = (
-                Msg.objects.filter(org=org, created_on__gt=org.plan_start, created_on__lt=plan_end)
+                Msg.objects.filter(
+                    org=org, created_on__gt=org.plan_start, created_on__lt=plan_end
+                )
                 .only("contact")
                 .distinct("contact")
                 .count()

@@ -6,7 +6,8 @@ from collections import OrderedDict
 
 from smartmin.models import SmartModel
 
-from django.contrib.postgres.fields import HStoreField, JSONField as DjangoJSONField
+from django.contrib.postgres.fields import HStoreField
+from django.db.models import JSONField as DjangoJSONField
 from django.core import checks
 from django.core.exceptions import ValidationError
 from django.db import connection, models
@@ -41,7 +42,9 @@ class IDSliceQuerySet(models.query.RawQuerySet):
     def __init__(self, model, ids, offset, total):
         if len(ids) > 0:
             # build a list of sequence to model id, so we can sort by the sequence in our results
-            pairs = ",".join(str((seq, model_id)) for seq, model_id in enumerate(ids, start=1))
+            pairs = ",".join(
+                str((seq, model_id)) for seq, model_id in enumerate(ids, start=1)
+            )
 
             super().__init__(
                 f"""
@@ -56,7 +59,9 @@ class IDSliceQuerySet(models.query.RawQuerySet):
                 model,
             )
         else:
-            super().__init__(f"""SELECT * FROM {model._meta.db_table} WHERE id < 0""", model)
+            super().__init__(
+                f"""SELECT * FROM {model._meta.db_table} WHERE id < 0""", model
+            )
 
         self.model = model
         self.ids = ids
@@ -103,10 +108,14 @@ class IDSliceQuerySet(models.query.RawQuerySet):
             if k == "pk":
                 ids = [i for i in ids if i == int(v)]
             elif k == "pk__in":
-                v = {int(j) for j in v}  # django forms like passing around pks as strings
+                v = {
+                    int(j) for j in v
+                }  # django forms like passing around pks as strings
                 ids = [i for i in ids if i in v]
             else:
-                raise ValueError(f"IDSliceQuerySet instances can only be filtered by pk, not {k}")
+                raise ValueError(
+                    f"IDSliceQuerySet instances can only be filtered by pk, not {k}"
+                )
 
         return IDSliceQuerySet(self.model, ids, offset=0, total=len(ids))
 
@@ -122,7 +131,9 @@ def mapEStoDB(model, es_queryset, only_ids=False):  # pragma: no cover
         return pks
     else:
         # prepare the data set
-        pairs = ",".join(str((seq, model_id)) for seq, model_id in enumerate(pks, start=1))
+        pairs = ",".join(
+            str((seq, model_id)) for seq, model_id in enumerate(pks, start=1)
+        )
 
         if pairs:
             return model.objects.raw(
@@ -151,7 +162,8 @@ class TranslatableField(HStoreField):
                     raise ValidationError("'%s' is not a valid language code." % lang)
                 if len(translation) > self.max_length:
                     raise ValidationError(
-                        "Translation for '%s' exceeds the %d character limit." % (lang, self.max_length)
+                        "Translation for '%s' exceeds the %d character limit."
+                        % (lang, self.max_length)
                     )
 
     def __init__(self, max_length, **kwargs):
@@ -174,12 +186,17 @@ class CheckFieldDefaultMixin(object):
     _default_hint = ("<valid default>", "<invalid default>")
 
     def _check_default(self):
-        if self.has_default() and self.default is not None and not callable(self.default):
+        if (
+            self.has_default()
+            and self.default is not None
+            and not callable(self.default)
+        ):
             return [
                 checks.Warning(
                     "%s default should be a callable instead of an instance so that it's not shared between all field "
                     "instances." % (self.__class__.__name__,),
-                    hint="Use a callable instead, e.g., use `%s` instead of `%s`." % self._default_hint,
+                    hint="Use a callable instead, e.g., use `%s` instead of `%s`."
+                    % self._default_hint,
                     obj=self,
                     id="postgres.E003",
                 )
@@ -221,13 +238,20 @@ class JSONAsTextField(CheckFieldDefaultMixin, models.Field):
             data = json.loads(value)
 
             if type(data) not in (list, dict, OrderedDict):
-                raise ValueError("JSONAsTextField should be a dict or a list, got %s => %s" % (type(data), data))
+                raise ValueError(
+                    "JSONAsTextField should be a dict or a list, got %s => %s"
+                    % (type(data), data)
+                )
             else:
                 return data
-        elif isinstance(value, (list, dict)):  # if db column has been converted to JSONB, use value directly
+        elif isinstance(
+            value, (list, dict)
+        ):  # if db column has been converted to JSONB, use value directly
             return value
         else:
-            raise ValueError('Unexpected type "%s" for JSONAsTextField' % (type(value),))
+            raise ValueError(
+                'Unexpected type "%s" for JSONAsTextField' % (type(value),)
+            )
 
     def get_db_prep_value(self, value, *args, **kwargs):
         # if the value is falsy we will save is as null
@@ -238,7 +262,10 @@ class JSONAsTextField(CheckFieldDefaultMixin, models.Field):
             return None
 
         if type(value) not in (list, dict, OrderedDict):
-            raise ValueError("JSONAsTextField should be a dict or a list, got %s => %s" % (type(value), value))
+            raise ValueError(
+                "JSONAsTextField should be a dict or a list, got %s => %s"
+                % (type(value), value)
+            )
 
         serialized = json.dumps(value)
 
@@ -286,7 +313,9 @@ class TembaModel(SmartModel):
 class RequireUpdateFieldsMixin(object):
     def save(self, *args, **kwargs):
         if self.id and "update_fields" not in kwargs and "force_insert" not in kwargs:
-            raise ValueError("Updating without specifying update_fields is disabled for this model")
+            raise ValueError(
+                "Updating without specifying update_fields is disabled for this model"
+            )
 
         super().save(*args, **kwargs)
 
@@ -310,7 +339,11 @@ class SquashableModel(models.Model):
         start = time.time()
         num_sets = 0
 
-        for distinct_set in cls.get_unsquashed().order_by(*cls.squash_over).distinct(*cls.squash_over)[:5000]:
+        for distinct_set in (
+            cls.get_unsquashed()
+            .order_by(*cls.squash_over)
+            .distinct(*cls.squash_over)[:5000]
+        ):
             with connection.cursor() as cursor:
                 sql, params = cls.get_squash_query(distinct_set)
 
@@ -320,7 +353,10 @@ class SquashableModel(models.Model):
 
         time_taken = time.time() - start
 
-        logging.debug("Squashed %d distinct sets of %s in %0.3fs" % (num_sets, cls.__name__, time_taken))
+        logging.debug(
+            "Squashed %d distinct sets of %s in %0.3fs"
+            % (num_sets, cls.__name__, time_taken)
+        )
 
     @classmethod
     @abstractmethod
